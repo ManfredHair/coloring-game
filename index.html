@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Coloring Game | Manfred Hair</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    canvas {
+      border: 2px solid #aaa;
+      margin-top: 10px;
+      cursor: pointer;
+      max-width: 100%;
+      background: white;
+    }
+    .controls {
+      margin: 20px 0;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .control-group {
+      margin: 10px 0;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
+    select, button {
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #4285f4;
+      color: white;
+      border: none;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover {
+      background: #3367d6;
+    }
+    .color-palette {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    .color-swatch {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 2px solid #ddd;
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .color-swatch:hover {
+      transform: scale(1.1);
+    }
+    .color-swatch.selected {
+      border: 2px solid black;
+      transform: scale(1.1);
+    }
+    .status {
+      margin-top: 10px;
+      font-style: italic;
+      color: #666;
+    }
+    .tool-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    .tool-button {
+      padding: 8px 15px;
+      background: #f1f1f1;
+      color: #333;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .tool-button.active {
+      background: #4285f4;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Coloring Game | Manfred Hair</h1>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="imageSelect">Escolha uma figura:</label>
+        <select id="imageSelect">
+          <option value="bestceo.png">Best CEO</option>
+          <option value="beach.png">Praia</option>
+          <option value="surf.png">Surfista</option>
+          <option value="portrait.png">Portrato</option>
+          <option value="friends.png">Amigos</option>
+        </select>
+        
+        <div class="tool-buttons">
+          <button id="fillTool" class="tool-button active">Balde</button>
+          <button id="brushTool" class="tool-button">Pincel</button>
+        </div>
+        
+        <button id="clearButton">Limpar</button>
+        <button id="downloadButton">Baixar Imagem</button>
+      </div>
+      
+      <div class="control-group">
+        <label for="colorPicker">Cor customizada:</label>
+        <input type="color" id="colorPicker" value="#ff0000" />
+        <label for="toleranceSlider">Tolerancia do Balde:</label>
+        <input type="range" id="toleranceSlider" min="0" max="100" value="20" />
+        <span id="toleranceValue">20</span>
+      </div>
+      
+      <div class="color-palette" id="colorPalette"></div>
+    </div>
+
+    <div class="status" id="status">Pronto para pintar!</div>
+    
+    <canvas id="canvas" width="800" height="1200"></canvas>
+  </div>
+
+  <script>
+    // Canvas setup
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const colorPicker = document.getElementById('colorPicker');
+    const imageSelect = document.getElementById('imageSelect');
+    const toleranceSlider = document.getElementById('toleranceSlider');
+    const toleranceValue = document.getElementById('toleranceValue');
+    const status = document.getElementById('status');
+    
+    // Tool selection
+    const fillTool = document.getElementById('fillTool');
+    const brushTool = document.getElementById('brushTool');
+    let currentTool = 'fill';
+    
+    // Brush properties
+    let brushSize = 10;
+    let isDrawing = false;
+    
+    // Color palette
+    const colorPalette = document.getElementById('colorPalette');
+    const colors = [
+      '#FF0000', '#FF9900', '#FFFF00', '#00FF00', 
+      '#00FFFF', '#0000FF', '#9900FF', '#FF00FF',
+      '#FFFFFF', '#CCCCCC', '#666666', '#000000',
+      '#996633', '#663300', '#FFCC99', '#FF99CC'
+    ];
+    
+    let selectedColor = '#FF0000';
+    let tolerance = 20;
+    
+    // Create color palette
+    colors.forEach(color => {
+      const swatch = document.createElement('div');
+      swatch.className = 'color-swatch';
+      swatch.style.backgroundColor = color;
+      if (color === selectedColor) {
+        swatch.classList.add('selected');
+      }
+      swatch.addEventListener('click', () => {
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+        swatch.classList.add('selected');
+        selectedColor = color;
+        colorPicker.value = color;
+      });
+      colorPalette.appendChild(swatch);
+    });
+    
+    // Initialize variables
+    const imageFolder = './images/';
+    let img = new Image();
+    let originalImageData = null;
+
+    // Tolerance slider
+    toleranceSlider.addEventListener('input', () => {
+      tolerance = parseInt(toleranceSlider.value);
+      toleranceValue.textContent = tolerance;
+    });
+    
+    // Color picker change
+    colorPicker.addEventListener('input', () => {
+      selectedColor = colorPicker.value;
+      document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('selected'));
+    });
+    
+    // Tool selection
+    fillTool.addEventListener('click', () => {
+      currentTool = 'fill';
+      fillTool.classList.add('active');
+      brushTool.classList.remove('active');
+      canvas.style.cursor = 'pointer';
+    });
+    
+    brushTool.addEventListener('click', () => {
+      currentTool = 'brush';
+      brushTool.classList.add('active');
+      fillTool.classList.remove('active');
+      canvas.style.cursor = 'crosshair';
+    });
+
+    // Load default image
+    loadImage(imageSelect.value);
+
+    imageSelect.addEventListener('change', () => {
+      loadImage(imageSelect.value);
+    });
+
+    function loadImage(fileName) {
+      status.textContent = "Loading image...";
+      img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.src = imageFolder + fileName;
+      img.onload = () => {
+        // Adjust canvas size to match image proportions
+        const maxWidth = 800;
+        const maxHeight = 1200;
+        let width = img.width;
+        let height = img.height;
+        
+        // Scale down if needed
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = width * ratio;
+          height = height * ratio;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Store the original image data for reference and comparison
+        originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        status.textContent = "Ready to color!";
+      };
+      img.onerror = () => {
+        status.textContent = "Error loading image!";
+      };
+    }
+
+    // Clear canvas
+    document.getElementById('clearButton').addEventListener('click', clearCanvas);
+    
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      status.textContent = "Canvas cleared!";
+    }
+    
+    // Download image
+    document.getElementById('downloadButton').addEventListener('click', downloadImage);
+    
+    function downloadImage() {
+      const link = document.createElement('a');
+      link.download = 'colored-' + imageSelect.value;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+    
+    // IMPROVED BUCKET FILL ALGORITHM
+    canvas.addEventListener('click', function(e) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = Math.floor((e.clientX - rect.left) * scaleX);
+      const y = Math.floor((e.clientY - rect.top) * scaleY);
+      
+      if (currentTool === 'fill') {
+        status.textContent = "Filling area...";
+        setTimeout(() => {
+          improvedFloodFill(x, y);
+          status.textContent = "Fill complete!";
+        }, 10);
+      }
+    });
+    
+    // Handle brush tool
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+    
+    function startDrawing(e) {
+      if (currentTool !== 'brush') return;
+      isDrawing = true;
+      draw(e);
+    }
+    
+    function draw(e) {
+      if (!isDrawing || currentTool !== 'brush') return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (e.clientX - rect.left) * scaleX;
+      const y = (e.clientY - rect.top) * scaleY;
+      
+      ctx.fillStyle = selectedColor;
+      ctx.beginPath();
+      ctx.arc(x, y, brushSize, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    function stopDrawing() {
+      isDrawing = false;
+    }
+    
+    // Improved bucket fill algorithm that handles tolerance
+    function improvedFloodFill(startX, startY) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      
+      // Get the target color (the color of the pixel we clicked on)
+      const targetColor = getPixelColor(data, startX, startY);
+      
+      // Get the fill color from our color picker
+      const fillColor = hexToRgba(selectedColor);
+      
+      // Return early if colors are the same
+      if (colorsMatchExactly(targetColor, fillColor)) return;
+      
+      // Use stack-based approach for better performance (avoids recursion limits)
+      const pixelsToCheck = [];
+      pixelsToCheck.push([startX, startY]);
+      
+      // Keep track of pixels we've already processed
+      const visited = new Set();
+      
+      while (pixelsToCheck.length > 0) {
+        const [x, y] = pixelsToCheck.pop();
+        const pixelPos = y * canvas.width + x;
+        
+        // Skip if we've already visited this pixel or it's out of bounds
+        if (visited.has(pixelPos) || 
+            x < 0 || 
+            y < 0 || 
+            x >= canvas.width || 
+            y >= canvas.height) {
+          continue;
+        }
+        
+        visited.add(pixelPos);
+        
+        // Get current pixel color
+        const currentColor = getPixelColor(data, x, y);
+        
+        // Check if this pixel should be filled (color is similar to the target)
+        if (colorsMatchWithTolerance(currentColor, targetColor, tolerance)) {
+          // Set the new color
+          setPixelColor(data, x, y, fillColor);
+          
+          // Add adjacent pixels to check
+          pixelsToCheck.push([x + 1, y]);
+          pixelsToCheck.push([x - 1, y]);
+          pixelsToCheck.push([x, y + 1]);
+          pixelsToCheck.push([x, y - 1]);
+        }
+      }
+      
+      // Update the canvas with our modified image data
+      ctx.putImageData(imageData, 0, 0);
+    }
+
+    // Helper functions
+    function getPixelColor(data, x, y) {
+      const i = (y * canvas.width + x) * 4;
+      return [data[i], data[i+1], data[i+2], data[i+3]];
+    }
+
+    function setPixelColor(data, x, y, color) {
+      const i = (y * canvas.width + x) * 4;
+      data[i] = color[0];
+      data[i+1] = color[1];
+      data[i+2] = color[2];
+      data[i+3] = color[3];
+    }
+
+    function colorsMatchExactly(a, b) {
+      return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+    }
+    
+    function colorsMatchWithTolerance(a, b, tolerance) {
+      // Check if the alpha is very low (transparent) - if so, ignore this pixel
+      if (a[3] < 50) return false;
+      
+      // Calculate color difference using a simple distance formula
+      const colorDiff = Math.sqrt(
+        Math.pow(a[0] - b[0], 2) + 
+        Math.pow(a[1] - b[1], 2) + 
+        Math.pow(a[2] - b[2], 2)
+      );
+      
+      // Colors match if the difference is within our tolerance threshold
+      return colorDiff <= tolerance;
+    }
+
+    function hexToRgba(hex) {
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b, 255]; // Full opacity
+    }
+  </script>
+</body>
+</html>
